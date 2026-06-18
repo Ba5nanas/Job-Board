@@ -1,0 +1,30 @@
+version: '3'
+services:
+  next-app:
+    build: ./landingpage
+    ports:
+      - "9958:3000"
+    restart: always
+    depends_on:
+      - backend
+
+  backoffice:
+    build: ./backoffice
+    ports:
+      - "9960:3001"
+    restart: always
+    volumes:
+      - ./backoffice:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "9959:3001"
+    restart: always
