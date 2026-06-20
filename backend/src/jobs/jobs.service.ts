@@ -1,107 +1,253 @@
-import { Injectable } from '@nestjs/common';
-import { Job } from '../entities/job.entity';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { PrismaService } from '../prisma/prisma.service'
+import { CreateJobDto, UpdateJobDto } from './dto/jobs.dto'
+import { JobStatus } from '@prisma/client'
 
 @Injectable()
 export class JobsService {
-  private jobs: Job[] = [
-    {
-      id: 1,
-      title: 'Senior Frontend Developer',
-      company: 'TechCorp',
-      location: 'Bangkok, Thailand',
-      type: 'Full-time',
-      salary: '฿80,000 - ฿120,000',
-      tags: ['React', 'TypeScript', 'Next.js'],
-      posted: '2 days ago',
-      logo: '🏢',
-    },
-    {
-      id: 2,
-      title: 'Backend Engineer',
-      company: 'StartupXYZ',
-      location: 'Remote',
-      type: 'Full-time',
-      salary: '฿70,000 - ฿110,000',
-      tags: ['Node.js', 'Python', 'AWS'],
-      posted: '1 day ago',
-      logo: '🚀',
-    },
-    {
-      id: 3,
-      title: 'UI/UX Designer',
-      company: 'DesignStudio',
-      location: 'Bangkok, Thailand',
-      type: 'Contract',
-      salary: '฿60,000 - ฿90,000',
-      tags: ['Figma', 'Adobe XD', 'Prototyping'],
-      posted: '3 hours ago',
-      logo: '🎨',
-    },
-    {
-      id: 4,
-      title: 'DevOps Engineer',
-      company: 'CloudFirst',
-      location: 'Remote',
-      type: 'Full-time',
-      salary: '฿90,000 - ฿140,000',
-      tags: ['Docker', 'Kubernetes', 'CI/CD'],
-      posted: '5 hours ago',
-      logo: '☁️',
-    },
-    {
-      id: 5,
-      title: 'Data Scientist',
-      company: 'DataDriven',
-      location: 'Chiang Mai, Thailand',
-      type: 'Full-time',
-      salary: '฿85,000 - ฿130,000',
-      tags: ['Python', 'ML', 'TensorFlow'],
-      posted: '1 week ago',
-      logo: '📊',
-    },
-    {
-      id: 6,
-      title: 'Mobile App Developer',
-      company: 'AppWorks',
-      location: 'Bangkok, Thailand',
-      type: 'Part-time',
-      salary: '฿50,000 - ฿80,000',
-      tags: ['React Native', 'iOS', 'Android'],
-      posted: '4 days ago',
-      logo: '📱',
-    },
-  ];
+  constructor(private prisma: PrismaService) {}
 
-  findAll(): Job[] {
-    return this.jobs;
-  }
+  async findAll(params: {
+    page?: number
+    limit?: number
+    search?: string
+    location?: string
+    type?: string
+    remote?: boolean
+  }) {
+    const { page = 1, limit = 20, search, location, type, remote } = params
+    const skip = (page - 1) * limit
+    const take = limit
 
-  findOne(id: number): Job | undefined {
-    return this.jobs.find(j => j.id === id);
-  }
-
-  create(job: Partial<Job>): Job {
-    const newJob: Job = {
-      id: this.jobs.length + 1,
-      title: job.title || '',
-      company: job.company || '',
-      location: job.location || '',
-      type: job.type || '',
-      salary: job.salary || '',
-      tags: job.tags || [],
-      posted: job.posted || 'Just now',
-      logo: job.logo || '🏢',
-    };
-    this.jobs.push(newJob);
-    return newJob;
-  }
-
-  remove(id: number): boolean {
-    const index = this.jobs.findIndex(j => j.id === id);
-    if (index !== -1) {
-      this.jobs.splice(index, 1);
-      return true;
+    const where: any = {
+      status: JobStatus.PUBLISHED,
     }
-    return false;
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ]
+    }
+
+    if (location) {
+      where.location = {
+        contains: location,
+        mode: 'insensitive',
+      }
+    }
+
+    if (type) {
+      where.jobType = type
+    }
+
+    if (remote !== undefined) {
+      where.isRemote = remote
+    }
+
+    const [jobs, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          company: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              logo: true,
+              location: true,
+              isVerified: true,
+            },
+          },
+          category: true,
+        },
+      }),
+      this.prisma.job.count({ where }),
+    ])
+
+    return {
+      data: jobs,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    }
+  }
+
+  async findOne(id: number) {
+    const job = await this.prisma.job.findUnique({
+      where: { id },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logo: true,
+            about: true,
+            industry: true,
+            location: true,
+            isVerified: true,
+          },
+        },
+        category: true,
+      },
+    })
+
+    if (!job) {
+      throw new NotFoundException('Job not found')
+    }
+
+    return job
+  }
+
+  async create(companyId: number, createJobDto: CreateJobDto) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    })
+
+    if (!company) {
+      throw new NotFoundException('Company not found')
+    }
+
+    if (company.currentJobs >= company.maxJobs) {
+      throw new BadRequestException('Job limit reached. Please upgrade your plan.')
+    }
+
+    const job = await this.prisma.job.create({
+      data: {
+        ...createJobDto,
+        companyId,
+        status: JobStatus.DRAFT,
+      } as any,
+    })
+
+    await this.prisma.company.update({
+      where: { id: companyId },
+      data: {
+        currentJobs: {
+          increment: 1,
+        },
+      },
+    })
+
+    return job
+  }
+
+  async update(companyId: number, jobId: number, updateJobDto: UpdateJobDto) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+    })
+
+    if (!job || job.companyId !== companyId) {
+      throw new NotFoundException('Job not found')
+    }
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: updateJobDto as any,
+    })
+  }
+
+  async remove(companyId: number, jobId: number) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+    })
+
+    if (!job || job.companyId !== companyId) {
+      throw new NotFoundException('Job not found')
+    }
+
+    await this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        deletedAt: new Date(),
+        status: JobStatus.ARCHIVED,
+      },
+    })
+
+    await this.prisma.company.update({
+      where: { id: companyId },
+      data: {
+        currentJobs: {
+          decrement: 1,
+        },
+      },
+    })
+
+    return { message: 'Job deleted successfully' }
+  }
+
+  async publish(companyId: number, jobId: number) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+    })
+
+    if (!job || job.companyId !== companyId) {
+      throw new NotFoundException('Job not found')
+    }
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.PUBLISHED,
+      },
+    })
+  }
+
+  async draft(companyId: number, jobId: number) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+    })
+
+    if (!job || job.companyId !== companyId) {
+      throw new NotFoundException('Job not found')
+    }
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.DRAFT,
+      },
+    })
+  }
+
+  async getCompanyJobs(companyId: number) {
+    return this.prisma.job.findMany({
+      where: { companyId },
+      include: {
+        category: true,
+      },
+    })
+  }
+
+  async checkJobLimit(companyId: number) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        id: true,
+        name: true,
+        packageType: true,
+        maxJobs: true,
+        currentJobs: true,
+      },
+    })
+
+    if (!company) {
+      throw new NotFoundException('Company not found')
+    }
+
+    return {
+      canCreate: company.currentJobs < company.maxJobs,
+      used: company.currentJobs,
+      limit: company.maxJobs,
+      remaining: Math.max(0, company.maxJobs - company.currentJobs),
+      packageType: company.packageType,
+    }
   }
 }

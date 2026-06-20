@@ -1,38 +1,66 @@
-import { Injectable } from '@nestjs/common';
-import { Category } from '../entities/category.entity';
+import { Injectable, NotFoundException } from '@nestjs/common'
+import { PrismaService } from '../prisma/prisma.service'
+import { CreateCategoryDto, UpdateCategoryDto } from './dto/categories.dto'
 
 @Injectable()
 export class CategoriesService {
-  private categories: Category[] = [
-    { id: 1, name: 'Engineering', count: 1240, icon: '💻' },
-    { id: 2, name: 'Design', count: 380, icon: '🎨' },
-    { id: 3, name: 'Marketing', count: 290, icon: '📣' },
-    { id: 4, name: 'Data Science', count: 450, icon: '📊' },
-    { id: 5, name: 'Product', count: 210, icon: '📋' },
-    { id: 6, name: 'Sales', count: 180, icon: '💼' },
-  ];
+  constructor(private prisma: PrismaService) {}
 
-  findAll(): Category[] {
-    return this.categories;
+  async findAll() {
+    return this.prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    })
   }
 
-  create(category: Partial<Category>): Category {
-    const newCategory: Category = {
-      id: this.categories.length + 1,
-      name: category.name || '',
-      count: category.count || 0,
-      icon: category.icon || '',
-    };
-    this.categories.push(newCategory);
-    return newCategory;
-  }
+  async findOne(id: number) {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+    })
 
-  remove(id: number): boolean {
-    const index = this.categories.findIndex(c => c.id === id);
-    if (index !== -1) {
-      this.categories.splice(index, 1);
-      return true;
+    if (!category) {
+      throw new NotFoundException('Category not found')
     }
-    return false;
+
+    return category
+  }
+
+  async create(createCategoryDto: CreateCategoryDto) {
+    return this.prisma.category.create({
+      data: {
+        ...createCategoryDto,
+        slug: createCategoryDto.name.toLowerCase().replace(/\s+/g, '-'),
+      },
+    })
+  }
+
+  async update(id: number, updateCategoryDto: UpdateCategoryDto) {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+    })
+
+    if (!category) {
+      throw new NotFoundException('Category not found')
+    }
+
+    return this.prisma.category.update({
+      where: { id },
+      data: updateCategoryDto,
+    })
+  }
+
+  async remove(id: number) {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+    })
+
+    if (!category) {
+      throw new NotFoundException('Category not found')
+    }
+
+    return this.prisma.category.update({
+      where: { id },
+      data: { isActive: false },
+    })
   }
 }

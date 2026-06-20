@@ -1,44 +1,89 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { RequirePermission } from '../rbac/rbac.decorator';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common'
+import { UsersService } from './users.service'
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
+import { RolesGuard } from '../common/guards/roles.guard'
+import { Roles } from '../common/decorators/roles.decorator'
+import { UpdateUserDto, CreateUserDto } from './dto/users.dto'
+import { ApiTags, ApiOperation } from '@nestjs/swagger'
 
+@ApiTags('Users')
+@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private usersService: UsersService) {}
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  async getProfile(@Request() req) {
+    return this.usersService.getProfileById(req.user.userId)
+  }
+
+  @Put('me')
+  @ApiOperation({ summary: 'Update current user profile' })
+  async updateProfile(@Request() req, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.updateProfile(req.user.userId, updateUserDto)
+  }
 
   @Get()
-  @RequirePermission('users:view')
-  findAll() {
-    return this.usersService.findAll();
+  @Roles('backoffice')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'List all users (Backoffice)' })
+  async findAll(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('search') search?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.usersService.findAll({
+      page,
+      limit,
+      search,
+      type,
+    })
   }
 
   @Get(':id')
-  @RequirePermission('users:view')
-  findOne(@Param('id') id: number) {
-    return this.usersService.findOne(id);
+  @Roles('backoffice')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Get user by ID (Backoffice)' })
+  async findById(@Param('id') id: number) {
+    return this.usersService.findById(id)
   }
 
   @Post()
-  @RequirePermission('users:create')
-  create(@Body() data: any) {
-    return this.usersService.create(data);
+  @Roles('backoffice')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Create user (Backoffice)' })
+  async create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto)
   }
 
   @Put(':id')
-  @RequirePermission('users:edit')
-  update(@Param('id') id: number, @Body() data: any) {
-    return this.usersService.update(id, data);
+  @Roles('backoffice')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Update user (Backoffice)' })
+  async update(@Param('id') id: number, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.update(id, updateUserDto)
   }
 
   @Delete(':id')
-  @RequirePermission('users:delete')
-  remove(@Param('id') id: number) {
-    return this.usersService.remove(id);
-  }
-
-  @Get(':id/permissions')
-  @RequirePermission('users:view')
-  getUserPermissions(@Param('id') id: number) {
-    return this.usersService.getUserPermissions(id);
+  @Roles('backoffice')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Delete user (Backoffice)' })
+  async remove(@Param('id') id: number) {
+    return this.usersService.remove(id)
   }
 }

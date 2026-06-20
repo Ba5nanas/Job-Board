@@ -1,19 +1,30 @@
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:18-bullseye AS builder
 
 WORKDIR /app
-COPY package.json .
-RUN npm install
+
+COPY package*.json ./
+RUN npm ci
+
+COPY prisma/ ./prisma/
+RUN npx prisma generate
+
 COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:18-bullseye AS production
 
 WORKDIR /app
-COPY --from=builder /app/package.json .
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/prisma ./prisma/
+RUN npx prisma generate
+
 COPY --from=builder /app/dist ./dist
-RUN npm install --production
 
 EXPOSE 3001
-CMD ["node", "dist/main.js"]
+
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:prod"]

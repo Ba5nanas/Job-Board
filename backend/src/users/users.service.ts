@@ -1,189 +1,172 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { User } from '../entities/user.entity';
-import { RolesService } from '../roles/roles.service';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { PrismaService } from '../prisma/prisma.service'
+import { UpdateUserDto, CreateUserDto } from './dto/users.dto'
 
 @Injectable()
 export class UsersService {
-  private users: User[] = [
-    {
-      id: 1,
-      name: 'Somchai Jaidee',
-      email: 'somchai@example.com',
-      role: 'Job Seeker',
-      status: 'Active',
-      avatar: '👨',
-      createdAt: '2024-01-15',
-      lastLogin: '2024-03-20',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-    {
-      id: 2,
-      name: 'Siriwan Mekhom',
-      email: 'siriwan@example.com',
-      role: 'Employer',
-      status: 'Active',
-      avatar: '👩',
-      createdAt: '2024-01-20',
-      lastLogin: '2024-03-19',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-    {
-      id: 3,
-      name: 'Admin User',
-      email: 'admin@jobfinder.com',
-      role: 'Admin',
-      status: 'Active',
-      avatar: '👤',
-      createdAt: '2023-12-01',
-      lastLogin: '2024-03-20',
-      roleId: 2,
-      permissions: [
-        'dashboard:view',
-        'jobs:view', 'jobs:create', 'jobs:edit', 'jobs:delete',
-        'companies:view', 'companies:create', 'companies:edit', 'companies:delete',
-        'categories:view', 'categories:create', 'categories:edit', 'categories:delete',
-        'users:view', 'users:create', 'users:edit', 'users:delete',
-        'testimonials:view', 'testimonials:create', 'testimonials:edit', 'testimonials:delete',
-        'featured:view', 'featured:create', 'featured:edit', 'featured:delete',
-        'settings:view', 'settings:edit',
-      ],
-    },
-    {
-      id: 4,
-      name: 'Kittisak Wongsa',
-      email: 'kittisak@example.com',
-      role: 'Job Seeker',
-      status: 'Active',
-      avatar: '👨‍💻',
-      createdAt: '2024-02-10',
-      lastLogin: '2024-03-18',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-    {
-      id: 5,
-      name: 'Nattaya Chaiyo',
-      email: 'nattaya@example.com',
-      role: 'Employer',
-      status: 'Inactive',
-      avatar: '👩‍💼',
-      createdAt: '2024-02-15',
-      lastLogin: '2024-02-28',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-    {
-      id: 6,
-      name: 'Pichit Sombat',
-      email: 'pichit@example.com',
-      role: 'Job Seeker',
-      status: 'Active',
-      avatar: '🧑',
-      createdAt: '2024-03-01',
-      lastLogin: '2024-03-20',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-    {
-      id: 7,
-      name: 'Wipada Rerkchai',
-      email: 'wipada@example.com',
-      role: 'Job Seeker',
-      status: 'Suspended',
-      avatar: '👩‍🎨',
-      createdAt: '2024-03-05',
-      lastLogin: '2024-03-10',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-    {
-      id: 8,
-      name: 'TechCorp HR',
-      email: 'hr@techcorp.com',
-      role: 'Employer',
-      status: 'Active',
-      avatar: '🏢',
-      createdAt: '2024-01-10',
-      lastLogin: '2024-03-19',
-      roleId: 4,
-      permissions: ['dashboard:view', 'jobs:view', 'companies:view', 'users:view', 'testimonials:view'],
-    },
-  ];
+  constructor(private prisma: PrismaService) {}
 
-  constructor(private readonly rolesService: RolesService) {}
+  async getProfileById(id: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        jobSeekerProfile: {
+          include: {
+            experiences: true,
+            educations: true,
+            skills: true,
+            portfolios: true,
+          },
+        },
+        companyOwner: {
+          include: {
+            company: true,
+          },
+        },
+      },
+    })
 
-  findAll(): User[] {
-    return this.users;
-  }
-
-  findOne(id: number): User | undefined {
-    return this.users.find(u => u.id === id);
-  }
-
-  create(data: Partial<User>): User {
-    let permissions: string[] = data.permissions || [];
-
-    if (data.roleId) {
-      permissions = this.rolesService.getPermissionsByRoleId(data.roleId);
-    }
-
-    const newUser: User = {
-      id: this.users.length + 1,
-      name: data.name || '',
-      email: data.email || '',
-      role: data.role || 'Job Seeker',
-      status: data.status || 'Active',
-      avatar: data.avatar || '👤',
-      createdAt: data.createdAt || new Date().toISOString().split('T')[0],
-      lastLogin: data.lastLogin || 'Never',
-      roleId: data.roleId || 0,
-      permissions,
-    };
-    this.users.push(newUser);
-    return newUser;
-  }
-
-  update(id: number, data: Partial<User>): User | null {
-    const item = this.users.find(u => u.id === id);
-    if (item) {
-      if (data.roleId) {
-        data.permissions = this.rolesService.getPermissionsByRoleId(data.roleId);
-      }
-      Object.assign(item, data);
-      return item;
-    }
-    return null;
-  }
-
-  remove(id: number): boolean {
-    const index = this.users.findIndex(u => u.id === id);
-    if (index !== -1) {
-      this.users.splice(index, 1);
-      return true;
-    }
-    return false;
-  }
-
-  assignPermissions(userId: number, permissions: string[]): User | null {
-    const user = this.users.find(u => u.id === userId);
     if (!user) {
-      return null;
+      throw new NotFoundException('User not found')
     }
-    user.permissions = permissions;
-    return user;
+
+    const { password, ...result } = user
+    return result
   }
 
-  getUserPermissions(userId: number): { userId: number; roleId: number; permissions: string[] } | null {
-    const user = this.users.find(u => u.id === userId);
+  async updateProfile(id: number, updateUserDto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    })
+
     if (!user) {
-      return null;
+      throw new NotFoundException('User not found')
     }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateUserDto,
+    })
+  }
+
+  async findAll(params: {
+    page?: number
+    limit?: number
+    search?: string
+    type?: string
+  }) {
+    const { page = 1, limit = 20, search, type } = params
+    const skip = (page - 1) * limit
+    const take = limit
+
+    const where: any = {}
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ]
+    }
+
+    if (type) {
+      where.userType = type
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          userType: true,
+          status: true,
+          avatar: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ])
+
     return {
-      userId: user.id,
-      roleId: user.roleId,
-      permissions: user.permissions,
-    };
+      data: users,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    }
+  }
+
+  async findById(id: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        jobSeekerProfile: true,
+        companyOwner: true,
+        applications: true,
+      },
+    })
+
+    if (!user) {
+      throw new NotFoundException('User not found')
+    }
+
+    const { password, ...result } = user
+    return result
+  }
+
+  async create(createUserDto: CreateUserDto) {
+    const existing = await this.prisma.user.findUnique({
+      where: { email: createUserDto.email },
+    })
+
+    if (existing) {
+      throw new BadRequestException('Email already exists')
+    }
+
+    const user = await this.prisma.user.create({
+      data: createUserDto,
+    })
+
+    const { password, ...result } = user
+    return result
+  }
+
+  async update(id: number, updateUserDto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    })
+
+    if (!user) {
+      throw new NotFoundException('User not found')
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateUserDto,
+    })
+  }
+
+  async remove(id: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    })
+
+    if (!user) {
+      throw new NotFoundException('User not found')
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        status: 'INACTIVE',
+      },
+    })
   }
 }

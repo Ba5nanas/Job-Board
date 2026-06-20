@@ -1,0 +1,457 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BackofficeRole {
+  SUPER_ADMIN
+  ADMIN
+  CONTENT_MANAGER
+  SUPPORT_STAFF
+  FINANCE_MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum CompanyStatus {
+  ACTIVE
+  PENDING
+  REJECTED
+  INACTIVE
+}
+
+enum CompanyUserRole {
+  OWNER
+  HR
+  RECRUITER
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  FREELANCE
+  INTERNSHIP
+  REMOTE
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum ApplicationStatus {
+  PENDING
+  UNDER_REVIEW
+  SHORTLISTED
+  INTERVIEW
+  OFFERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PackageType {
+  FREE
+  BASIC
+  STANDARD
+  PREMIUM
+  UNLIMITED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  EXPIRED
+  TRIAL
+}
+
+enum NotificationType {
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+model BackofficeUser {
+  id            Int      @id @default(autoincrement())
+  displayName   String   @map("display_name")
+  email         String   @unique
+  password      String
+  role          BackofficeRole @default(SUPPORT_STAFF)
+  permissions   Json?
+  status        UserStatus @default(ACTIVE)
+  avatar        String?
+  lastLogin     DateTime?   @map("last_login")
+  loginCount    Int       @default(0) @map("login_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  @@map("backoffice_users")
+}
+
+model User {
+  id                Int      @id @default(autoincrement())
+  name              String
+  email             String   @unique
+  password          String
+  userType          String   @map("user_type")
+  phone             String?
+  avatar            String?
+  coverImage        String?  @map("cover_image")
+  bio               String?
+  location          String?
+  website           String?
+  linkedin          String?
+  twitter           String?
+  github            String?
+  status            UserStatus @default(ACTIVE)
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  lastLogin         DateTime? @map("last_login")
+  loginCount        Int      @default(0) @map("login_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  jobSeekerProfile  JobSeekerProfile?
+  companyOwner      CompanyOwner?
+  companyMembers    CompanyMember[]
+  applications      Application[]
+  favorites         Favorite[]
+
+  @@map("users")
+}
+
+model JobSeekerProfile {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique @map("user_id")
+  headline          String?
+  summary           String?
+  currentTitle      String?  @map("current_title")
+  currentCompany    String?  @map("current_company")
+  currentLocation   String?  @map("current_location")
+  openToWork        Boolean  @default(false) @map("open_to_work")
+  desiredRoles      Json?    @map("desired_roles")
+  desiredLocations  Json?    @map("desired_locations")
+  expectedSalary    String?  @map("expected_salary")
+  availableFrom     DateTime? @map("available_from")
+  totalExperience   Int?     @default(0) @map("total_experience")
+  languages         Json?
+  certifications   Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experiences       WorkExperience[]
+  educations        Education[]
+  skills            Skill[]
+  portfolios        Portfolio[]
+
+  @@map("job_seeker_profiles")
+}
+
+model WorkExperience {
+  id          Int      @id @default(autoincrement())
+  profileId   Int      @map("profile_id")
+  title       String
+  company     String
+  location    String?
+  startDate   DateTime @map("start_date")
+  endDate     DateTime? @map("end_date")
+  isCurrent   Boolean  @default(false) @map("is_current")
+  description String?
+  skills      Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  profile     JobSeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("work_experiences")
+}
+
+model Education {
+  id          Int      @id @default(autoincrement())
+  profileId   Int      @map("profile_id")
+  school      String
+  degree      String
+  field       String
+  startDate   DateTime @map("start_date")
+  endDate     DateTime? @map("end_date")
+  grade       String?
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  profile     JobSeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("educations")
+}
+
+model Skill {
+  id        Int      @id @default(autoincrement())
+  profileId Int      @map("profile_id")
+  name      String
+  level     String?
+  years     Int?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profile   JobSeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("skills")
+}
+
+model Portfolio {
+  id        Int      @id @default(autoincrement())
+  profileId Int      @map("profile_id")
+  title     String
+  url       String?
+  description String?
+  thumbnail String?
+  tags      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profile   JobSeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("portfolios")
+}
+
+model Company {
+  id               Int      @id @default(autoincrement())
+  name             String
+  slug             String   @unique
+  email            String   @unique
+  password         String
+  logo             String?
+  coverImage       String?  @map("cover_image")
+  website          String?
+  industry         String?
+  companySize      String?  @map("company_size")
+  about            String?
+  address          String?
+  founded          Int?
+  location         String?
+  contactEmail     String?  @map("contact_email")
+  phone            String?
+  socials          Json?
+  status           CompanyStatus @default(PENDING)
+  isVerified       Boolean  @default(false) @map("is_verified")
+  packageType      PackageType @default(FREE) @map("package_type")
+  subscriptionStatus SubscriptionStatus @default(INACTIVE) @map("subscription_status")
+  subscriptionExpiry DateTime? @map("subscription_expiry")
+  maxJobs          Int      @default(3) @map("max_jobs")
+  currentJobs      Int      @default(0) @map("current_jobs")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  owner            CompanyOwner?
+  members          CompanyMember[]
+  jobs             Job[]
+
+  @@map("companies")
+}
+
+model CompanyOwner {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique @map("user_id")
+  companyId   Int      @unique @map("company_id")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_owners")
+}
+
+model CompanyMember {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  companyId   Int      @map("company_id")
+  email       String
+  name        String
+  avatar      String?
+  role        CompanyUserRole
+  status      UserStatus @default(ACTIVE)
+  permissions Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id])
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@map("company_members")
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  parentId    Int?     @map("parent_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  jobs        Job[]
+
+  @@map("categories")
+}
+
+model Job {
+  id              Int      @id @default(autoincrement())
+  title           String
+  slug            String   @unique
+  companyId       Int      @map("company_id")
+  categoryId      Int?     @map("category_id")
+  description     String
+  shortDescription String? @map("short_description")
+  location        String
+  jobType         JobType  @map("job_type")
+  workMode        String?  @map("work_mode")
+  salaryMin       Int?     @map("salary_min")
+  salaryMax       Int?     @map("salary_max")
+  salaryCurrency  String   @default("USD") @map("salary_currency")
+  experienceLevel String?  @map("experience_level")
+  requirements    Json?
+  responsibilities Json?
+  benefits        Json?
+  tags            Json?
+  isFeatured      Boolean  @default(false) @map("is_featured")
+  isUrgent        Boolean  @default(false) @map("is_urgent")
+  applyDeadline   DateTime? @map("apply_deadline")
+  maxApplicants   Int?     @map("max_applicants")
+  status          JobStatus @default(DRAFT) @map("status")
+  views           Int      @default(0)
+  applicantCount  Int      @default(0) @map("applicant_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  publishedAt     DateTime? @map("published_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category        Category? @relation(fields: [categoryId], references: [id])
+  applications    Application[]
+  favorites       Favorite[]
+
+  @@map("jobs")
+}
+
+model Application {
+  id            Int           @id @default(autoincrement())
+  userId        Int           @map("user_id")
+  jobId         Int           @map("job_id")
+  status        ApplicationStatus @default(PENDING)
+  coverLetter   String?       @map("cover_letter")
+  resumeUrl     String?       @map("resume_url")
+  notes         String?
+  appliedAt     DateTime      @default(now()) @map("applied_at")
+  respondedAt   DateTime?     @map("responded_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  user          User          @relation(fields: [userId], references: [id])
+  job           Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@map("applications")
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  jobId     Int      @map("job_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@map("favorites")
+}
+
+model Testimonial {
+  id          Int      @id @default(autoincrement())
+  name        String
+  company     String?
+  position    String?
+  content     String
+  rating      Int      @default(5)
+  avatar      String?
+  isApproved  Boolean  @default(false) @map("is_approved")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("testimonials")
+}
+
+model FeaturedItem {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  imageUrl    String?  @map("image_url")
+  link        String?
+  type        String
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("featured_items")
+}
+
+model Package {
+  id               Int              @id @default(autoincrement())
+  name             String           @unique
+  type             PackageType
+  description      String?
+  jobLimit         Int              @map("job_limit")
+  pricePerMonth    Decimal          @default(0) @map("price_per_month")
+  features         Json?
+  isActive         Boolean          @default(true) @map("is_active")
+  isDefault        Boolean          @default(false) @map("is_default")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@map("packages")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  changes   Json?
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}

@@ -1,44 +1,147 @@
-import { Injectable } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
-import { Application } from '../entities/application.entity'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { PrismaService } from '../prisma/prisma.service'
+import { UpdateApplicationDto } from './dto/applications.dto'
+import { ApplicationStatus } from '@prisma/client'
 
 @Injectable()
 export class ApplicationsService {
-  constructor(
-    @InjectRepository(Application)
-    private applicationsRepository: Repository<Application>,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  async findAll(): Promise<Application[]> {
-    return this.applicationsRepository.find({ order: { appliedAt: 'DESC' } })
+  async getUserApplications(userId: number) {
+    return this.prisma.application.findMany({
+      where: { userId },
+      include: {
+        job: {
+          include: {
+            company: {
+              select: {
+                id: true,
+                name: true,
+                logo: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
   }
 
-  async findOne(id: number): Promise<Application | undefined> {
-    return this.applicationsRepository.findOne({ where: { id } })
+  async getCompanyApplications(companyId: number, jobId?: number, status?: string) {
+    const where: any = {
+      job: {
+        companyId,
+      },
+    }
+
+    if (jobId) {
+      where.jobId = jobId
+    }
+
+    if (status) {
+      where.status = status
+    }
+
+    return this.prisma.application.findMany({
+      where,
+      include: {
+        user: {
+          include: {
+            jobSeekerProfile: {
+              include: {
+                experiences: true,
+                educations: true,
+                skills: true,
+              },
+            },
+          },
+        },
+        job: {
+          include: {
+            company: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
   }
 
-  async create(createApplicationDto: Partial<Application>): Promise<Application> {
-    const application = this.applicationsRepository.create(createApplicationDto)
-    return this.applicationsRepository.save(application)
+  async apply(userId: number, jobId: number, coverLetter?: string) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+    })
+
+    if (!job) {
+      throw new NotFoundException('Job not found')
+    }
+
+    const existing = await this.prisma.application.findFirst({
+      where: {
+        userId,
+        jobId,
+      },
+    })
+
+    if (existing) {
+      throw new BadRequestException('Already applied to this job')
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    })
+
+    if (!user || user.userType !== 'job-seeker') {
+      throw new BadRequestException('Only job seekers can apply')
+    }
+
+    return this.prisma.application.create({
+      data: {
+        userId,
+        jobId,
+        coverLetter,
+        status: ApplicationStatus.PENDING,
+      },
+    })
   }
 
-  async update(id: number, updateApplicationDto: Partial<Application>): Promise<Application | undefined> {
-    await this.applicationsRepository.update(id, updateApplicationDto)
-    return this.findOne(id)
+  async updateStatus(companyId: number, applicationId: number, updateApplicationDto: UpdateApplicationDto) {
+    const application = await this.prisma.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        job: true,
+      },
+    })
+
+    if (!application || application.job.companyId !== companyId) {
+      throw new NotFoundException('Application not found')
+    }
+
+    return this.prisma.application.update({
+      where: { id: applicationId },
+      data: {
+        status: updateApplicationDto.status as ApplicationStatus,
+        notes: updateApplicationDto.notes,
+      },
+    })
   }
 
-  async remove(id: number): Promise<void> {
-    await this.applicationsRepository.delete(id)
-  }
+  async reject(companyId: number, applicationId: number) {
+    const application = await this.prisma.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        job: true,
+      },
+    })
 
-  async getStats(): Promise<{ total: number; pending: number; reviewing: number; shortlisted: number; rejected: number; accepted: number }> {
-    const total = await this.applicationsRepository.count()
-    const pending = await this.applicationsRepository.count({ where: { status: 'pending' } })
-    const reviewing = await this.applicationsRepository.count({ where: { status: 'reviewing' } })
-    const shortlisted = await this.applicationsRepository.count({ where: { status: 'shortlisted' } })
-    const rejected = await this.applicationsRepository.count({ where: { status: 'rejected' } })
-    const accepted = await this.applicationsRepository.count({ where: { status: 'accepted' } })
-    return { total, pending, reviewing, shortlisted, rejected, accepted }
+    if (!application || application.job.companyId !== companyId) {
+      throw new NotFoundException('Application not found')
+    }
+
+    return this.prisma.application.update({
+      where: { id: applicationId },
+      data: {
+        status: ApplicationStatus.REJECTED,
+      },
+    })
   }
 }
